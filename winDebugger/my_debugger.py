@@ -21,7 +21,13 @@ class debugger():
         self.exception = None
         self.exception_address = None
         self.first_breakpoint = True
-        self.hardware_points = {}
+        self.hardware_breakpoints = {}
+        self.guarded_pages = []
+        self.memory_breakpoints = {}
+        
+        system_info = SYSTEM_INFO()
+        kernel32.GetSystemInfo(byref(system_info))
+        self.page_size = system_info.dwPageSize
     
     def load(self, path_to_exe):
         
@@ -94,7 +100,7 @@ class debugger():
                 elif self.exception == EXCEPTION_GAURD_PAGE:
                     print "Gaurd Page access detected."
                 elif self.exception == EXCEPTION_SINGLE_STEP:
-                    print "Single Stepping."
+                    continue_status = self.exception_handler_single_step()
             
             kernel32.ContinueDebugEvent(debug_event.dwProcessId, debug_event.dwThreadId, continue_status)
     
@@ -220,3 +226,105 @@ class debugger():
         
         if condition not in (HW_ACCESS, HW_EXECUTE, HW_WRITE):
             return False
+        
+        if not self.hardware_breakpoints.has_key(0):
+            available = 0
+        elif not self.hardware_breakpoints.has_key(1):
+            available = 1
+        elif not self.hardware_breakpoints.has_key(2):
+            available = 2
+        elif not self.hardware_breakpoints.has_key(3):
+            available = 3
+        else:
+            return False
+        
+        
+        for thread_id in self.enumerate_threads():
+            context = self.get_thread_context(thread_id)
+            context.Dr7 |= 1 << (available * 2)
+        
+            if available == 0:
+                context.Dr0 = address
+            
+            elif available == 1:
+                context.Dr1 = address
+            
+            elif available == 2:
+                context.Dr2 = address
+            
+            elif available == 3:
+                context.Dr3 = address
+            
+            context.Dr7 |= condition << ((available * 4) + 16)
+            context.Dr7 |= length << ((available * 4) + 18)
+            h_thread = self.open_thread(thread_id)
+            kernel32.SetThreadContext(h_thread, byref(context))
+        
+        self.hardware_breakpoints[available] = (address, length, condition)
+        return True
+    
+    def exception_handler_single_step(self):
+        if self.context.Dr6 & 0x1 and self.hardware_breakpoints.has_key(0):
+            slot = 0
+        elif self.context.Dr6 & 0x2 and self.hardware_breakpoints.has_key(1):
+            slot = 1
+        elif self.context.Dr6 & 0x4 and self.hardware_breakpoints.has_key(2):
+            slot = 2
+        elif self.context.Dr6 & 0x8 and self.hardware_breakpoints.has_key(3):
+            slot = 3
+        else:
+            #INT1 wasn't hw_breakpoint
+            continue_status = DBG_EXCEPTION_NOT_HANDLED
+        
+        # removing breakpoint from list
+        if self.bp_del_hw(slot):
+            continue_status = DBG_CONTINUE
+            print "[*] Hardware breakpoint removed from list."
+        return continue_status
+        
+    def bp_del_hw(self, slot):
+        for thread_id in self.enumerate_threads():
+            context = self.get_thread_context(thread_id)
+            context.Dr7 &= ~(1 << (slot * 2))
+            
+            if slot == 0:
+                context.Dr0 = 0x00000000
+            elif slot == 1:
+                context.Dr1 = 0x00000000
+            elif slot == 2:
+                context.Dr2 = 0x00000000
+            elif slot == 3:
+                context.Dr3 = 0x00000000
+            
+            # removing the condition flag
+            context.Dr7 &= ~(3 << ((slot * 4)+16))
+            
+            #remove length flag
+            context.Dr7 &= ~(3 << ((slot * 4)+18))
+            
+            h_thread = self.open_thread(thread_id)
+            kernel32.SetThreadContext(h_thread, byref(context))
+            
+        del self.hardware_breakpoints[slot]
+        return True        
+    def bp_set_mem(self, address, size):
+        
+        mbi  = MEMORY_BASIC_INFORMATION()
+        
+        if kernel32.VirtualQueryEx(self.h_process, address, byref(mbi), sizeof(mbi)) < sizeof(mbi):
+            return False
+        
+        current_page = mbi.BaseAddress
+        
+        while current_page <= address + size:
+            
+            self.guarded_pages.append(current_page)
+            old_protection = c_ulong(0)
+            if not kernel32.VirtualProtectEx(self.h_process, current_page, size, mbi.Protect | PAGE_GUARD, byref(old_protection)):
+                return False
+            
+            current_page += self.page_size
+        
+        self.memory_breakpoints[address] = (address, size, mbi)
+        return True
+            
